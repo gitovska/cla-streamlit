@@ -6,6 +6,7 @@ authors = ["Adrienne Wright <ad@rienne.de>"]
 readme = "README.md"
 packages = [{include = "cla_streamlit"}]
 repository = "https://github.com/gitovska/cla-streamlit"
+homepage = "https://cla-grades.streamlit.app"
 
 [tool.poetry.dependencies]
 python = "3.9.16"
