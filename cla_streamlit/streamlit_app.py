@@ -3,83 +3,119 @@ import streamlit
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 from google.oauth2 import service_account
 from gsheetsdb import connect
 
 
 def main():
-    with st.sidebar:
-        with st.expander("Filter"):
-            filter_container = st.container()
-        login_container = st.container()
+    dashboard_tab, documentation_tab = st.tabs(["Dashboard", "Documentation"])
 
-    login(login_container)
+    with dashboard_tab:
+        with st.sidebar:
+            with st.expander("Filter"):
+                filter_container = st.container()
+            login_container = st.container()
 
-    if st.session_state["authenticated"]:
-        st.title("CLA Programming Grades")
-    else:
-        st.title("[Demo] CLA Programming Grades")
+        login(login_container)
 
-    # load data
-    df = load_data()
+        if st.session_state["authenticated"]:
+            st.title("CLA Programming Grades")
+        else:
+            st.title("[Demo] CLA Programming Grades")
 
-    # filter data
-    filter = create_filter(df, filter_container)
-    df = load_data(filter)
+        # load data
+        df_course, df_demo = load_data()
 
-    average_per_homework = calculate_hw_avg(df)
-    df_by_percentage = calculate_bins(df)
-    df_by_group = calculate_group_totals(df)
+        if st.session_state["authenticated"]:
+            df = df_course
+        else:
+            df = df_demo
 
-    # metrics
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("Graded", df.shape[0])
-    with col2:
-        st.metric("Pass", (df['percentage'] >= 50).sum())
-    with col3:
-        st.metric("Fail", (df['percentage'] < 50).sum())
-    with col4:
-        average_percentage = df['percentage'].mean()
-        if pd.isna(average_percentage):
-            average_percentage = 0
-        st.metric("Average", f"{int(round(average_percentage))} %")
+        # filter data
+        filter = create_filter(df, filter_container)
+        df = filter_data(df, filter)
 
-    col1, col2 = st.columns(2, gap="medium")
+        average_per_homework = calculate_hw_avg(df)
+        df_by_percentage = calculate_bins(df)
+        df_by_group = calculate_group_totals(df)
 
-    # percentage per homework group
-    with col1:
-        hw_groups_percentage_fig = px.line(df, x="homework", y="percentage", color="group",
-                                           title="Percentage for programming groups per homework")
-        st.plotly_chart(hw_groups_percentage_fig, use_container_width=True)
+        # metrics
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Graded", df.shape[0])
+        with col2:
+            st.metric("Pass", (df['percentage'] >= 50).sum())
+        with col3:
+            st.metric("Fail", (df['percentage'] < 50).sum())
+        with col4:
+            average_percentage = df['percentage'].mean()
+            if pd.isna(average_percentage):
+                average_percentage = 0
+            st.metric("Average", f"{int(round(average_percentage))} %")
 
-    # average per homework
-    with col2:
-        hw_average_fig = px.line(average_per_homework, x="homework", y="mean_percentage",
-                                 title="Mean percentage across groups for each homework")
-        st.plotly_chart(hw_average_fig, use_container_width=True)
+        col1, col2 = st.columns(2, gap="medium")
 
-    # bins
-    bin_fig = px.bar(df_by_percentage, x="bin", y="count", color="homework",
-                     title="Counts for programming groups in percentage bins")
-    st.plotly_chart(bin_fig, use_container_width=True)
+        # percentage per homework group
+        with col1:
+            hw_groups_percentage_fig = px.line(df, x="homework", y="percentage", color="group",
+                                               labels={x: x.capitalize() for x in ["homework",
+                                                                                   "percentage",
+                                                                                   "group"]},
+                                               title="Percentage for Groups per Homework")
+            st.plotly_chart(hw_groups_percentage_fig, theme="streamlit", use_container_width=True)
 
-    # total points for groups
-    group_totals_fig = px.bar(df_by_group, x="points", y="group", orientation='h', color="even_weighting_percentage",
-                              hover_data=["score", "percentage", "even_weighting_percentage"],
-                              color_continuous_scale="sunsetdark_r",
-                              title="Group Totals")
-    group_totals_fig.update_xaxes(range=[0, df_by_group['total_possible_points'].max()])
-    group_totals_fig.update_layout(
-        yaxis={"tickmode": "linear",
-               "tickfont": {"size": 10}
-               },
-        height=800
-    )
-    st.plotly_chart(group_totals_fig)
+        # average per homework
+        with col2:
+            hw_average_fig = px.line(average_per_homework, x="homework", y="mean_percentage",
+                                     labels={x: " ".join([x.capitalize() for x in x.split("_")]) for x in ["homework",
+                                                                                                           "mean_percentage"]},
+                                     title="Mean Percentage across Groups per Homework")
+            st.plotly_chart(hw_average_fig, theme="streamlit", use_container_width=True)
 
+        # bins
+        bin_fig = px.bar(df_by_percentage, x="bin", y="count", color="homework",
+                         labels={x: x.capitalize() for x in ["bin",
+                                                             "count",
+                                                             "homework"]},
+                         title="Groups in Percentage Bins")
+        bin_fig.update_layout(height=500)
+        st.plotly_chart(bin_fig, theme="streamlit", use_container_width=True)
 
-def load_data(filter: dict = None) -> pandas.DataFrame:
+        # total points for groups
+        group_totals_fig = go.Figure(
+            data=[go.Bar(x=df_by_group['points'], y=df_by_group['group'],
+                         customdata=df_by_group,
+                         hovertemplate="<extra><br>" + "<br>".join([
+                             "<b>%{customdata[0]}</b>",
+                             "<b>score</b>: %{customdata[5]}",
+                             "<b>percentage</b>: %{customdata[3]}",
+                             "<b>even_weighting_percentage</b>: %{customdata[4]}"
+                         ]) + "</extra>",
+                         orientation='h',
+                         marker=dict(color=df_by_group['even_weighting_percentage'],
+                                     colorscale='sunsetdark_r',
+                                     showscale=True,
+                                     colorbar_title="Even Weighting Percentage")
+                         )])
+        group_totals_fig.update_xaxes(range=[0, df_by_group['total_possible_points'].max()])
+        group_totals_fig.update_layout(
+            title="Group Totals",
+            xaxis_title="Points",
+            yaxis_title="Groups",
+            yaxis={"tickmode": "linear",
+                   "tickfont": {"size": 10}
+                   },
+            height=700,
+        )
+        st.plotly_chart(group_totals_fig, theme="streamlit", use_container_width=True)
+
+    with documentation_tab:
+        markdown_str = documentation()
+        st.markdown(markdown_str)
+
+@st.cache_data(ttl=3600)
+def load_data() -> (pandas.DataFrame, pandas.DataFrame):
     # establish google service account credentials
     credentials = service_account.Credentials.from_service_account_info(
         st.secrets["gcp_service_account"],
@@ -95,18 +131,22 @@ def load_data(filter: dict = None) -> pandas.DataFrame:
         rows = rows.fetchall()
         return rows
 
-    if st.session_state["authenticated"]:
-        sheet_url = st.secrets["private_gsheets_url"]
-    else:
-        sheet_url = st.secrets["demo_private_gsheets_url"]
+    urls = {"course_sheet_url": st.secrets["private_gsheets_url"],
+            "demo_sheet_url": st.secrets["demo_private_gsheets_url"]}
 
-    rows = run_query(f'SELECT * FROM "{sheet_url}"')
+    def query_sheet(url: str) -> pandas.DataFrame:
+        rows = run_query(f'SELECT * FROM "{url}"')
 
-    # convert rows to dataframe
-    df = pd.DataFrame(rows)
-    df = df.astype({'homework': str, 'group': str, 'points': float, 'total_possible_points': float})
-    df['mark_date'] = pd.to_datetime(df['mark_date'], format='%Y-%m-%dT%H:%M:%S')
+        # convert rows to dataframe
+        df = pd.DataFrame(rows)
+        df = df.astype({'homework': str, 'group': str, 'points': float, 'total_possible_points': float})
+        df['mark_date'] = pd.to_datetime(df['mark_date'], format='%Y-%m-%dT%H:%M:%S')
+        return df
 
+    return tuple([query_sheet(url) for url in urls.values()])
+
+
+def filter_data(df, filter: dict) -> pandas.DataFrame:
     # remove test programming group and group without bonus points
     df.drop(df.loc[df['group'] == "programmiergruppe00"].index, inplace=True)
     df.drop(df.loc[df['group'] == "programmiergruppekeinebonuspunkte"].index, inplace=True)
@@ -116,9 +156,8 @@ def load_data(filter: dict = None) -> pandas.DataFrame:
     df['percentage'] = df['percentage'].round()
 
     # apply filter
-    if filter:
-        df.drop(df[~df['homework'].isin(filter['homework'])].index, inplace=True)
-        df.drop(df[~df['group'].isin(filter['group'])].index, inplace=True)
+    df.drop(df[~df['homework'].isin(filter['homework'])].index, inplace=True)
+    df.drop(df[~df['group'].isin(filter['group'])].index, inplace=True)
     return df
 
 
@@ -156,12 +195,13 @@ def create_filter(df: pandas.DataFrame, container: streamlit.container) -> dict:
     # filter for homework
     all_homework = df['homework'].unique()
     filter['homework'] = container.multiselect(label="Homework", key="homework_filter",
-                                               options=all_homework, default=all_homework)
+                                               options=all_homework, default=all_homework,
+                                               help="A global filter for homework weeks")
 
     # filter for groups
     all_groups = df['group'].unique()
     filter['group'] = container.multiselect(label="Group", key="group_filter", options=all_groups,
-                                            default=all_groups)
+                                            default=all_groups, help="A global filter for programming groups")
     return filter
 
 
@@ -177,7 +217,7 @@ def login(container: streamlit.container):
     if "authenticated" not in st.session_state:
         st.session_state["authenticated"] = False
     login_form = container.form(key='login')
-    login_form.text_input("Password", type="password", key="password")
+    login_form.text_input("Password", type="password", key="password", help="Login to access course grade data")
     login_button = login_form.form_submit_button(label="Login")
     if login_button:
         st.session_state["authenticated"] = check_password()
@@ -186,6 +226,41 @@ def login(container: streamlit.container):
             container.success("🎉 Login Successful")
         else:
             container.error("😔 Incorrect Password")
+
+
+def documentation() -> str:
+    return """
+    # CLA Grades Dashboard
+    
+    ## About
+    
+    This dashboard is used to analyse the points awarded to programming groups in the course Computerlinguistische
+    Anwendungen (Computational Linguistic Applications) at the Ludwig Maximilian University of Munich.
+    
+    It was written in Python on top of Streamlit by [Adrienne Wright](http://ad.rienne.de).\\
+    The dashboard repository is at [gitovska/cla-streamlit](https://github.com/gitovska/cla-streamlit).
+    
+    ## How To
+    
+    ### Login
+    
+    To see actual course grades, you will need to login with the dashboard password.
+    Otherwise you will see mock data that demonstrates the functionality of dashboard without
+    revealing student information.
+    
+    ### Filter
+    
+    You may use the global filters in the sidebar to filter for specific homework
+    and programming groups across all graphs.\\
+    You can also double click on elements in the legends to filter within a specific graph.
+    
+    ### Metrics
+    
+    - **Percentage:** A percentage of awarded points over all possible points across all homeworks.
+    - **Even Weighting Percentage:** A combination of all grade percentages awarded in each homework.
+    - **Percentage Bins:** Partitions of the set of percentage grades awarded for each homework.
+    A count for each bin is displayed.
+    """
 
 
 if __name__ == "__main__":
