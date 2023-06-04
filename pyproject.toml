@@ -8,10 +8,14 @@ packages = [{include = "cla_streamlit"}]
 repository = "https://github.com/gitovska/cla-streamlit"
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = "3.9.16"
 streamlit = "^1.23.1"
-pandas = "^2.0.2"
+pyparsing = "^3.0.9"
 watchdog = "^3.0.0"
+google = "^3.0.0"
+gsheetsdb = "^0.1.13.1"
+plotly = "^5.14.1"
+pandas = "^2.0.2"
 
 
 [build-system]
