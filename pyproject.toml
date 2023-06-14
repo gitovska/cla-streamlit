@@ -9,7 +9,7 @@ repository = "https://github.com/gitovska/cla-streamlit"
 homepage = "https://cla-grades.streamlit.app"
 
 [tool.poetry.dependencies]
-python = "3.9.16"
+python = "^3.9.16"
 streamlit = "^1.23.1"
 pyparsing = "^3.0.9"
 watchdog = "^3.0.0"
